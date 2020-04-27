@@ -5,10 +5,12 @@ It works on Android with the last Chrome (>= r81)
 
 ![alt text](https://raw.githubusercontent.com/nosy-b/holography/master/demo.gif "Holography")
 
+DEMO here: http://nosy-b.github.io/holography
+
 ## Description
 
 Feel free to use this dirty little code for your own experiments
-I put demos on my twitter somtimes  https://twitter.com/AlexandreDevaux
+I put demos on my twitter sometimes  https://twitter.com/AlexandreDevaux
 
 ## Getting Started
 

@@ -7,8 +7,18 @@ It works on Android with the last Chrome (>= r81)
 
 DEMO here: http://nosy-b.github.io/holography
 
+## How to
+
+- First be sure to have an android phone with chrome >=r81
+- Choose your camera feed (ideally back camera)
+- Tap on start AR (the position of your phone at that moment will be the center of the frame)
+- Move a bit around if you want to help the space detection
+- Look at a human (real or a photo) and tap on the screen
+- It should appear coming from your phone to the direction you were looking at when clicked on Start (initial position)
+
 ## Description
 
+Small code that create particles for people extracted from camera feed using Bodypix model
 Feel free to use this dirty little code for your own experiments
 I put demos on my twitter sometimes  https://twitter.com/AlexandreDevaux
 

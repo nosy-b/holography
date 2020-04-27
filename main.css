@@ -10,7 +10,7 @@ body {
 }
 
 a {
-	color: #ff0;
+	color: rgb(240, 205, 140);
 	text-decoration: none;
 }
 
@@ -37,7 +37,7 @@ canvas {
 	color: white;
 	text-align: center;
 	margin: 12px;	
-	margin-top: 62px;
+	margin-top: 42px;
 }
 .red-square {
 	background-color: #FF4136;
@@ -63,6 +63,10 @@ canvas {
 	z-index: 1; /* TODO Solve this in HTML */
 }
 
+.linkG {
+	font-size:xx-small;
+	color: white;
+}
 
 #infoSeismic {
 	position: absolute;

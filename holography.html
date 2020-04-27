@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>Holograms</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+        <link type="text/css" rel="stylesheet" href="main.css">
+        
+        <!-- Load TensorFlow.js -->
+        <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.2"></script>
+        <!-- Load BodyPix -->
+        <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix@2.0"></script>
+
+    </head>
+    
+    
+   
+
+  
+    <body>  
+
+        <div class="containerV">
+            <video video autoplay playsinline class="hidden">
+            </video>
+            <div class="red-square">
+                <div class="overlay">
+                    <label for="videoSource">Choose your camera: </label><select id="videoSource"></select>
+                    <p>When in AR mode, create an hologram by looking at a person/face/photo and tap on the screen, it should appear gently. (Beware of camera framing, not to close)</p>
+                </div>
+            </div>
+           
+        </div>
+        <div id="container"></div>
+
+        <script type="x-shader/x-vertex" id="vertexshaderParticle">
+            uniform sampler2D originalImage;
+            uniform sampler2D depthMap;
+            uniform float time;
+            uniform vec3 userPos;
+            uniform float width;
+            uniform float height;
+            uniform int optionMode;
+            attribute vec2 uvs;
+            varying vec2 vUv;
+            varying float vDepth;
+            float distancePoint = 3.;
+            float localRadius = 0.3;
+            const float M_PI = 3.1415926535897932384626433832795;
+
+            float luminance(float r, float g, float b){
+                return  (r * 0.3) + (g * 0.59) + (b * 0.11);
+            }
+
+            void main() {
+                
+                vUv = uvs;
+                float ratio = height/width;
+                gl_PointSize = 19.;
+                vec4 dMap = texture2D( depthMap, uvs) ;
+                vec4 img = texture2D( originalImage, uvs) ;
+                float lumi = luminance(img.r, img.g, img.b);
+                vec3 pos = distancePoint * vec3(uvs.x - 0.5, (uvs.y - 0.5) * ratio - 0.25, 1. + lumi / 40.); 
+                pos.xyz *= 0.65;  // Reduce long portrait sample (todo automatic)
+                vDepth = dMap.r; 
+
+                vec3 originalPhotoPos = vec3(position.x, position.y - 2., position.z + 6.); // Starting position
+                vec3 interpolatedPos = mix(originalPhotoPos, pos, min( /*position.x*/ + (lumi + 0.2) / 10. * time * 15., 1.));
+
+                // Particles Continuous animation
+                // Depends on the distance to the viewer
+                // vec3 camPos = viewMatrix[3].xyz;
+                // float distToCam = distance(interpolatedPos, camPos /*cameraPosition*/ ) * 1.;
+                // interpolatedPos += distToCam / 5.;
+                interpolatedPos += (position / 60.) * (sin(position.y * time * 20.) * 2. )  / time; 
+                // interpolatedPos += (position / 60.) * (position.y + sin(time * 0.2 * M_PI ) ); 
+                 gl_PointSize +=  4. * sin(uvs.y + time * 0.5 * M_PI) ; 
+                
+
+                if(optionMode == 1){  // Mode for particles to circle at bottom
+                    if(uvs.y < 0.1) {
+                        float alpha = time * 6. + position.x * 10.;
+                        float x = (localRadius + position.z / 5.) * cos(alpha);
+                        float z = (localRadius + position.z / 5.) * sin(alpha);
+                        interpolatedPos += vec3(x, interpolatedPos.y/8. + 0., z + 0.);
+                        // gl_PointSize = 8.;
+                    }  
+                }  
+                 
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(interpolatedPos, 1.0 );
+            }
+
+        </script>
+
+        <script type="x-shader/x-fragment" id="fragmentshaderParticle">
+            #extension GL_EXT_shader_texture_lod : enable
+            #extension GL_OES_standard_derivatives : enable
+
+            uniform float time;
+            uniform sampler2D originalImage;
+            uniform sampler2D depthMap;
+            varying vec2 vUv;
+            varying float vDepth;
+
+
+            void main() {
+
+                vec4 pointSpriteTexture = texture2D( originalImage, vUv );
+                vec4 earthMap = texture2D( depthMap, vUv ) ;
+                gl_FragColor =  pointSpriteTexture;
+                // gl_FragColor.a = vDepth * 0.7;
+                // if(vDepth < 0.5) gl_FragColor.a = 0.05 * (4. - time *2.);   // To make original pic with people out disappear
+                float r = 0.0, delta = 0.0, alpha = 1.0;
+                vec2 cxy = 2.0 * gl_PointCoord - 1.0;
+                r = dot(cxy, cxy);
+                // #ifdef GL_OES_standard_derivatives
+                    delta = fwidth(r);
+                    alpha = 1.0 - smoothstep(1.0 - delta, 1.0 + delta, r);
+                // #endif
+                
+                gl_FragColor *= alpha;
+  
+
+            }
+
+        </script>
+
+        <script type="module">
+
+            import * as THREE from './three.module.js';
+            import { ARButton } from './ARButton.js';
+            //import { OrbitControls } from './controls/OrbitControls.js';
+            var renderer, scene, camera, controls;
+            var time = 0;
+            var particles;
+            var texture;
+            var shaderMaterialParticles;
+            var textureSegmentation;
+            var textureName = "im_7.jpg"; 
+            var depthMapName = "depthMapFriends.png";
+            var subsamplingFactor = 1;
+
+            var textureOriginal = new THREE.Texture(); // new THREE.TextureLoader().load( textureName );
+            var textureDepthMap = new THREE.Texture(); // new THREE.TextureLoader().load( depthMapName);
+
+            // Photo
+            var constraints;
+            var imageCapture;
+            var mediaStream;
+            
+            var controller;
+
+            var grabFrameButton = document.querySelector('button#grabFrame');
+            var videoSelect = document.querySelector('select#videoSource');
+            var video = document.querySelector('video');
+            //grabFrameButton.onclick = grabFrame;
+            videoSelect.onchange = getStream;
+
+            var net; // Model for inference
+
+            async function loadModel(){
+                // Load the model
+                net = await bodyPix.load(
+                    {
+                        architecture: 'MobileNetV1',
+                        outputStride: 16,
+                        multiplier: 0.75,
+                        quantBytes: 2,
+                        internalResolution: 'medium',
+                        segmentationThreshold: 0.7
+                        }
+                    );
+            }
+            loadModel();
+
+            // Get a list of available media input (and output) devices
+            // then get a MediaStream for the currently selected input device
+            navigator.mediaDevices.enumerateDevices()
+                .then(gotDevices)
+                .catch(error => {
+                    console.log('enumerateDevices() error: ', error);
+                })
+                .then(getStream);
+
+            // From the list of media devices available, set up the camera source <select>,
+            // then get a video stream from the default camera source.
+            function gotDevices(deviceInfos) {
+                for (var i = 0; i !== deviceInfos.length; ++i) {
+                    var deviceInfo = deviceInfos[i];
+                    console.log('Found media input or output device: ', deviceInfo);
+                    var option = document.createElement('option');
+                    option.value = deviceInfo.deviceId;
+                    if (deviceInfo.kind === 'videoinput') {
+                    option.text = deviceInfo.label || 'Camera ' + (videoSelect.length + 1);
+                    videoSelect.appendChild(option);
+                    }
+                }
+            }
+
+            // Get a video stream from the currently selected camera source.
+            function getStream() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => {
+                track.stop();
+                });
+            }
+            var videoSource = videoSelect.value;
+            constraints = {
+                video: {deviceId: videoSource ? {exact: videoSource} : undefined}
+            };
+            navigator.mediaDevices.getUserMedia(constraints)
+                .then(gotStream)
+                .catch(error => {
+                console.log('getUserMedia error: ', error);
+                });
+            }
+
+            // Display the stream from the currently selected camera source, and then
+            // create an ImageCapture object, using the video from the stream.
+            function gotStream(stream) {
+                console.log('getUserMedia() got stream: ', stream);
+                mediaStream = stream;
+                video.srcObject = stream;
+                video.classList.remove('hidden');
+                imageCapture = new ImageCapture(stream.getVideoTracks()[0]);
+                getCapabilities();
+            }
+
+            // Get the PhotoCapabilities for the currently selected camera source.
+            function getCapabilities() {
+            imageCapture.getPhotoCapabilities().then(function(capabilities) {
+                console.log('Camera capabilities:', capabilities);
+                if (capabilities.zoom.max > 0) {
+                zoomInput.min = capabilities.zoom.min;
+                zoomInput.max = capabilities.zoom.max;
+                zoomInput.value = capabilities.zoom.current;
+                zoomInput.classList.remove('hidden');
+                }
+            }).catch(function(error) {
+                console.log('getCapabilities() error: ', error);
+            });
+            }
+
+
+            // Get an ImageBitmap from the currently selected camera source and
+            // display this with a canvas element.
+            function grabFrame() {
+
+                imageCapture.grabFrame().then(function(imageBitmap) {
+                    console.log('Grabbed frame:', imageBitmap);
+                    var canvas = document.createElement('canvas');
+                    var ctx = canvas.getContext('2d');
+                    
+                    canvas.width = imageBitmap.width;
+                    canvas.height = imageBitmap.height;
+                    canvas.getContext('2d').drawImage(imageBitmap, 0, 0);
+                    textureOriginal = new THREE.Texture(canvas);
+                    textureOriginal.needsUpdate = true;
+                    
+                    // particles.material.uniforms.originalImage.value = texture;
+
+                    // Then we create particles and launch the segmentation
+                    video.hidden = true;
+                    // createParticles(textureOriginal);
+                    loadAndPredict(textureOriginal.image);
+                    
+                   
+                }).catch(function(error) {
+                    console.log('grabFrame() error: ', error);
+                });
+            }
+
+
+            function init() {
+
+                camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.1, 500 );
+                //camera.position.z = 2;
+             //   camera.position.copy(new THREE.Vector3(0.6,0.7,0.8));
+                scene = new THREE.Scene();
+
+                renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+                renderer.xr.enabled = true;
+                renderer.setPixelRatio( window.devicePixelRatio );
+                renderer.setSize( window.innerWidth, window.innerHeight );
+
+                var container = document.getElementById( 'container' );
+                container.appendChild( renderer.domElement );
+                document.body.appendChild( ARButton.createButton( renderer ) );
+                
+                var uniforms = {
+                    optionMode: {value: 1},
+                    userPos: {value: camera.position},
+                    width: {value: 1},
+                    height: {value: 1},
+                    time: {value: time},
+                    originalImage: { value: textureOriginal },
+                    depthMap: { value: textureDepthMap}
+				};
+
+				shaderMaterialParticles = new THREE.ShaderMaterial( {
+
+					uniforms: uniforms,
+					vertexShader: document.getElementById( 'vertexshaderParticle' ).textContent,
+					fragmentShader: document.getElementById( 'fragmentshaderParticle' ).textContent,
+                    //blending: THREE.AdditiveBlending,
+					depthTest: false,
+					transparent: true,
+					vertexColors: true
+                } );
+              
+                var geometryC = new THREE.BoxGeometry( 0.1,0.1,0.1 );
+                var materialC = new THREE.MeshBasicMaterial( {color: 0x00ff00, side: THREE.DoubleSide, transparent:true, opacity:0.3} );
+                var cube = new THREE.Mesh( geometryC, materialC );
+               // scene.add( cube );
+
+                //loadTextures();
+
+
+                // grabFrame and show extracte silouhette
+                function onSelect() {
+                    // time = 0;
+                    grabFrame();
+                    /*
+                    var geometry = new THREE.CylinderBufferGeometry( 0, 0.05, 0.2, 32 ).rotateX( Math.PI / 2 );
+                    var material = new THREE.MeshBasicMaterial( { color: 0xffffff * Math.random() } );
+                    var mesh = new THREE.Mesh( geometry, material );
+                    mesh.position.set( 0, 0, - 0.3 ).applyMatrix4( controller.matrixWorld );
+                    mesh.quaternion.setFromRotationMatrix( controller.matrixWorld );
+                    scene.add( mesh );
+                    */
+                    
+                }
+
+                controller = renderer.xr.getController( 0 );
+				controller.addEventListener( 'select', onSelect );
+				scene.add( controller );
+                
+            }
+
+
+
+            init();
+
+
+            function loadTextures(){
+
+                var loader = new THREE.TextureLoader();
+                // load a resource
+                loader.load(
+                    // resource URL
+                    textureName,
+
+                    // onLoad callback
+                    function ( texture ) {
+                        // in this example we create the material when the texture is loaded
+                        var material = new THREE.MeshBasicMaterial( {
+                            map: texture
+                        } );
+
+                        //createParticles(texture);
+                        loadAndPredict(texture.image);
+
+                    },
+
+                    // onProgress callback currently not supported
+                    undefined,
+
+                    // onError callback
+                    function ( err ) {
+                        console.error( 'An error happened. Fuckkk not agaiiin!' );
+                    }
+                );
+ 
+
+            }
+
+       /*         
+            // Create particles uniformly for an image
+            function createParticles(tex){
+
+                console.log(tex.image.width);
+                if(tex.image.width > 1920 || tex.image.height > 1920)
+                    subsamplingFactor = 4;
+                var w = tex.image.width / subsamplingFactor;
+                var h = tex.image.height / subsamplingFactor;
+                var geometry = new THREE.BufferGeometry();
+                var positions = [];
+                var uvs = [];
+                var colors = [];
+                var color = new THREE.Color();
+
+                for ( var i = 0; i < w; ++i){
+
+                    for ( var j = 0; j < h; ++j){
+                       
+                        positions.push(Math.random(), Math.random(), Math.random());
+                        uvs.push(i/w, j/h);
+                        
+                    }
+                }
+
+                geometry.setAttribute( 'position', new THREE.Float32BufferAttribute( positions, 3 ) );
+                geometry.setAttribute( 'uvs', new THREE.Float32BufferAttribute( uvs, 2 ) );
+
+                particles = new THREE.Points( geometry, shaderMaterialParticles );
+                particles.material.uniforms.originalImage.value = tex;
+                particles.position.z = -4;
+               // particles.position.y -= 0.5;
+                particles.frustumCulled = false;
+                particles.material.uniforms.width.value = w ;
+                particles.material.uniforms.height.value = h ;
+                scene.add( particles );
+                console.log(particles);
+                                   
+                animate();
+
+            }
+        */
+
+
+            function animate() {
+
+                renderer.setAnimationLoop( render );
+            }
+
+
+
+			function render() {
+                time += 0.01;
+                //if(time > 10) time = 0;
+                particles.material.uniforms.time.value = time ;
+               // particles.material.uniforms.userPos.value = camera.position; // Normally passed by default...
+                renderer.render( scene, camera );
+                // console.log(camera);
+            }
+
+
+
+            // Part TensorFlow https://github.com/tensorflow/tfjs-models/tree/master/body-pix
+            async function loadAndPredict(img) {
+                if(net == null){
+                    console.log("loading model");
+                    net = await bodyPix.load(
+                    {
+                        architecture: 'MobileNetV1',
+                        outputStride: 16,
+                        multiplier: 0.75,
+                        quantBytes: 2,
+                        internalResolution: 'medium',
+                        segmentationThreshold: 0.7
+                        }
+                    );
+                }
+                /**
+                 * One of (see documentation below):
+                 *   - net.segmentPerson
+                 *   - net.segmentPersonParts
+                 *   - net.segmentMultiPerson
+                 *   - net.segmentMultiPersonParts
+                 * See documentation below for details on each method.
+                 */
+                var segmentation = await net.segmentPerson(img); // net.segmentPerson(img);
+                console.log(segmentation);
+
+                createTextureAndParticlesFromSegmentation(segmentation);
+            }
+
+/*
+            // Create Data texture using the segmentation array result
+            function createTextureFromSegmentation(seg){
+                var size = seg.width * seg.height;
+                var data = new Uint8Array( 3 * size );
+
+                for ( var i = 0; i < size; i ++ ) {
+                    var stride = i * 3;
+                    data[ stride ] = seg.data[i] * 255;
+                    data[ stride + 1 ] = seg.data[i];
+                    data[ stride + 2 ] = seg.data[i];
+                }
+                textureSegmentation = new THREE.DataTexture( data, seg.width, seg.height, THREE.RGBFormat );
+                textureSegmentation.flipY = true;
+                time = 0;
+                particles.material.uniforms.time.value = time ;
+                particles.material.uniforms.depthMap.value = textureSegmentation;
+            }
+*/
+
+            // Create Data texture using the segmentation array result AND THE PARTICLES (only on people)
+            function createTextureAndParticlesFromSegmentation(seg){
+                
+
+                if(particles) scene.remove(particles);
+
+                var size = seg.width * seg.height;
+                var data = new Uint8Array( 3 * size );
+                subsamplingFactor = 4;
+                var w = seg.width;
+                var h = seg.height;
+                var geometry = new THREE.BufferGeometry();
+                var positions = [];
+                var uvs = [];
+                var u,v;
+                var nbParticles = 0;
+                var nAdded = 0;
+
+                for ( var i = 0; i < size; i ++ ) {
+
+                    // Texture part
+                    var stride = i * 3;
+                    data[ stride ] = seg.data[i] * 255;
+                    data[ stride + 1 ] = seg.data[i];
+                    data[ stride + 2 ] = seg.data[i];
+
+                    // Particles part. We test if People or not to create a particle
+                    if(seg.data[i] > 0){
+                        if(nAdded % subsamplingFactor == 0){
+                            nbParticles++;
+                            u = (i % w ) / w; 
+                            v = Math.floor(i / w) / h;
+                            positions.push(Math.random(), Math.random(), Math.random());
+                            uvs.push(u, 1. - v);  // flip y
+                        }
+                        nAdded++;
+                    }
+                }
+
+
+                // Part particles
+                geometry.setAttribute( 'position', new THREE.Float32BufferAttribute( positions, 3 ) );
+                geometry.setAttribute( 'uvs', new THREE.Float32BufferAttribute( uvs, 2 ) );
+
+                particles = new THREE.Points( geometry, shaderMaterialParticles );
+                particles.material.uniforms.originalImage.value = textureOriginal;
+                particles.position.z = -4;
+                // particles.position.y -= 0.5;
+                particles.frustumCulled = false;
+                particles.material.uniforms.width.value = w ;
+                particles.material.uniforms.height.value = h ;
+
+                // Part texture
+                textureSegmentation = new THREE.DataTexture( data, seg.width, seg.height, THREE.RGBFormat );
+                textureSegmentation.flipY = true;
+                time = 0;
+                particles.material.uniforms.time.value = time ;
+                particles.material.uniforms.depthMap.value = textureSegmentation;
+
+                
+                scene.add( particles );
+                console.log("Particles count: ", nbParticles);
+                                
+                animate();
+
+            }
+          
+
+        </script>
+
+
+    </body>
+</html>

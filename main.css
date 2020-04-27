@@ -1,0 +1,94 @@
+body {
+	margin: 0;
+	background-color: #000;
+	color: #fff;
+	font-family: Monospace;
+	font-size: 13px;
+	line-height: 24px;
+	overscroll-behavior: none;
+	overflow:hidden;
+}
+
+a {
+	color: #ff0;
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+button {
+	cursor: pointer;
+	text-transform: uppercase;
+}
+
+canvas {
+	display: block;
+}
+.containerV { position:relative; }
+.containerV video {
+    position:relative;
+    z-index:0;
+}
+.overlay {
+
+	z-index:1;
+	color: white;
+	text-align: center;
+	margin: 12px;	
+	margin-top: 62px;
+}
+.red-square {
+	background-color: #FF4136;
+	width: 300px;
+	height: 300px;
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	transform: translate(-50%, -50%);
+  }
+#info {
+	position: absolute;
+	top: 0px;
+	width: 100%;
+	padding: 10px;
+	box-sizing: border-box;
+	text-align: center;
+	-moz-user-select: none;
+	-webkit-user-select: none;
+	-ms-user-select: none;
+	user-select: none;
+	pointer-events: none;
+	z-index: 1; /* TODO Solve this in HTML */
+}
+
+
+#infoSeismic {
+	position: absolute;
+	top: 0px;
+	width: 280px;
+	padding: 10px;
+	box-sizing: border-box;
+	text-align: center;
+	-moz-user-select: none;
+	-webkit-user-select: none;
+	-ms-user-select: none;
+	user-select: none;
+	pointer-events: none;
+	z-index: 1; /* TODO Solve this in HTML */
+	background-color: rgba(35, 4, 83, 0.6);
+}
+
+a, button, input, select {
+	pointer-events: auto;
+}
+
+.dg.ac {
+	-moz-user-select: none;
+	-webkit-user-select: none;
+	-ms-user-select: none;
+	user-select: none;
+	z-index: 2 !important; /* TODO Solve this in HTML */
+}
+

@@ -13,18 +13,14 @@ Feel free to use this dirty little code for your own experiments
 * ThreeJS, TensorFlowJS
 
 
-### Executing program
-
-
-
 ## Help
 
-One thing to be careful about it not to frame to close the subject you want to make a hologram of. The frame is smaller than what your screen shows
+One thing to be careful about is not to frame too close the subject you want to make a hologram of. The frame is smaller than what your screen shows
 
 ## Authors
 
 Alexandre Devaux 
-ex. [@AlexandreDevaux](https://twitter.com/AlexandreDevaux)
+[@AlexandreDevaux](https://twitter.com/AlexandreDevaux)
 
 ## Version History
 

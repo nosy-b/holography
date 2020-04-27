@@ -2,9 +2,9 @@
 
 Simple demo of WebXR and Deep Learning using Tensorflow to create holograms on-the-fly. 
 It works on Android with the last Chrome (>= r81)
-
+<p align="center">
 ![alt text](https://raw.githubusercontent.com/nosy-b/holography/master/demo.gif "Holography")
-
+</p>
 ## Description
 
 Feel free to use this dirty little code for your own experiments

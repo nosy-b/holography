@@ -3,6 +3,8 @@
 Simple demo of WebXR and Deep Learning using Tensorflow to create holograms on-the-fly. 
 It works on Android with the last Chrome (>= r81)
 
+! REMARK! : I discovered that the possibility to take pictures WHILE in AR Context just works on LG phones surprisingly (https://developers.google.com/ar/discover/supported-devices) as they use the wide angle camera for AR (the phone I used by chance)!! So to use this demo with other phones, take the picture (using usual browser get media api) but before launching the AR Context!
+
 ![alt text](https://raw.githubusercontent.com/nosy-b/holography/master/demo.gif "Holography")
 
 DEMO here: http://nosy-b.github.io/holography
